@@ -1,11 +1,52 @@
 import streamlit as st
 from PIL import Image
+from langchain_community.document_loaders import (
+    PyMuPDFLoader,
+    TextLoader
+)
+
+import tempfile
+import os
+
+#===========================
+# Fonction pour charger les documents
+#===========================
+def load_documents(uploaded_files):
+    """
+    Charge les fichiers PDF, TXT et MD et retourne une liste de Documents LangChain.
+    """
+
+    documents = []
+
+    for uploaded_file in uploaded_files:
+
+        suffix = os.path.splitext(uploaded_file.name)[1]
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+
+            tmp_file.write(uploaded_file.getbuffer())
+
+            tmp_path = tmp_file.name
+
+        if suffix.lower() == ".pdf":
+            loader = PyMuPDFLoader(tmp_path)
+
+        else:
+            loader = TextLoader(tmp_path, encoding="utf-8")
+
+        docs = loader.load()
+
+        for doc in docs:
+            doc.metadata["source"] = uploaded_file.name
+
+        documents.extend(docs)
+
+    return documents
 
 #===========================
 # Chargement du logo
 #===========================
 logo = Image.open("assets/logoTenaIzy.png")
-gl = Image.open("assets/logo.png")
 
 # ==========================
 # Configuration de la page
@@ -27,7 +68,6 @@ st.caption("Votre assistant IA local")
 # ==========================
 with st.sidebar:
 
-    st.image(gl, width=50)
     st.header("Configuration")
 
     uploaded_files = st.file_uploader(
@@ -37,6 +77,26 @@ with st.sidebar:
     )
 
     index_button = st.button("Indexer les documents")
+    if index_button:
+
+        if not uploaded_files:
+            st.warning("Veuillez sélectionner au moins un document.")
+
+        else:
+
+            with st.spinner("Lecture des documents..."):
+
+                documents = load_documents(uploaded_files)
+
+            st.success(f"{len(documents)} document(s) chargé(s).")
+
+            for doc in documents:
+
+                st.write("------")
+
+                st.write(doc.metadata)
+
+                st.write(doc.page_content[:500])
 
     use_llm = st.toggle("Activer le LLM", value=False)
 

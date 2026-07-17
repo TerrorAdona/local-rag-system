@@ -4,18 +4,15 @@ from langchain_community.document_loaders import (
     PyMuPDFLoader,
     TextLoader
 )
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import tempfile
 import os
+
 
 #===========================
 # Fonction pour charger les documents
 #===========================
 def load_documents(uploaded_files):
-    """
-    Charge les fichiers PDF, TXT et MD et retourne une liste de Documents LangChain.
-    """
-
     documents = []
 
     for uploaded_file in uploaded_files:
@@ -42,6 +39,26 @@ def load_documents(uploaded_files):
         documents.extend(docs)
 
     return documents
+
+#===========================
+# Fonction pour charger les documents
+#===========================
+def split_documents(documents):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=150,
+        length_function=len,
+        separators=[
+            "\n\n",
+            "\n",
+            " ",
+            ""
+        ]
+    )
+
+    chunks = text_splitter.split_documents(documents)
+
+    return chunks
 
 #===========================
 # Chargement du logo
@@ -87,9 +104,28 @@ with st.sidebar:
             with st.spinner("Lecture des documents..."):
 
                 documents = load_documents(uploaded_files)
+                chunks = split_documents(documents)
 
             st.success(f"{len(documents)} document(s) chargé(s).")
+            st.success(f"{len(chunks)} chunk(s) créés.")
+            
+            # for i, chunk in enumerate(chunks[:3]):
 
+            #     st.write(f"### Chunk {i + 1}")
+
+            #     st.write(chunk.metadata)
+
+            #     st.write(chunk.page_content)
+
+            #     st.divider()
+
+            for i, chunk in enumerate(chunks):
+                st.write(
+                    f"Chunk {i+1} : "
+                    f"{len(chunk.page_content)} caractères "
+                    f"(page {chunk.metadata.get('page')})"
+                )
+            
             for doc in documents:
 
                 st.write("------")

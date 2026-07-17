@@ -301,8 +301,6 @@ st.caption("Votre assistant IA local")
 # ==========================
 with st.sidebar:
 
-    st.header("Configuration")
-
     st.header("Discussions")
 
     if st.button("➕ Nouveau chat", use_container_width=True):
@@ -358,31 +356,18 @@ with st.sidebar:
 
             st.success(f"{len(documents)} document(s) chargé(s).")
             st.success(f"{len(chunks)} chunk(s) créés.")
-            
-            # for i, chunk in enumerate(chunks[:3]):
 
-            #     st.write(f"### Chunk {i + 1}")
+            with st.expander("🔍 Détails du traitement (debug)"):
+                for i, chunk in enumerate(chunks):
+                    st.write(
+                        f"Chunk {i+1} : {len(chunk.page_content)} caractères "
+                        f"(page {chunk.metadata.get('page')})"
+                    )
 
-            #     st.write(chunk.metadata)
-
-            #     st.write(chunk.page_content)
-
-            #     st.divider()
-
-            for i, chunk in enumerate(chunks):
-                st.write(
-                    f"Chunk {i+1} : "
-                    f"{len(chunk.page_content)} caractères "
-                    f"(page {chunk.metadata.get('page')})"
-                )
-            
-            for doc in documents:
-
-                st.write("------")
-
-                st.write(doc.metadata)
-
-                st.write(doc.page_content[:500])
+                for doc in documents:
+                    st.write("------")
+                    st.write(doc.metadata)
+                    st.write(doc.page_content[:500])
 
     use_llm = st.toggle("Activer le LLM", value=False)
 
@@ -428,10 +413,23 @@ if question:
                 # Chat libre : LLM sans RAG, sans contexte documentaire
                 st.info("Mode chat libre (sans document)")
 
-                with st.spinner("Génération de la réponse..."):
+                # with st.spinner("Génération de la réponse..."):
 
-                    llm = get_llm()
-                    response = llm.invoke(question)
+                #     llm = get_llm()
+                #     response = llm.invoke(question)
+
+                with st.spinner("Génération de la réponse..."):
+                    try:
+                        llm = get_llm()
+                        response = llm.invoke(question)
+                        answer = response.content
+                    except Exception as e:
+                        answer = (
+                            "⚠️ Impossible de contacter Ollama. "
+                            "Vérifie qu'il est bien lancé (`ollama serve`) "
+                            "et que le modèle `qwen2.5-coder:3b` est installé."
+                        )
+                        st.error(f"Erreur technique : {e}")
 
                 answer = response.content
 
@@ -469,6 +467,17 @@ if question:
                     st.write(doc.page_content)
                     st.divider()
 
+                # Sauvegarde d'un résumé textuel des résultats comme "réponse"
+                summary = "\n\n".join(
+                    f"**{doc.metadata.get('source')}** (score {score:.3f}) : {doc.page_content[:200]}..."
+                    for doc, score in results
+                )
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": summary}
+                )
+                st.session_state.all_chats[st.session_state.current_chat_id]["messages"] = st.session_state.messages
+                save_all_chats(st.session_state.all_chats)
+
             # Mode RAG (LLM + documents)
             else:
 
@@ -482,92 +491,51 @@ if question:
                     )
                     context = format_context(results)
 
+                # with st.spinner("Génération de la réponse..."):
+
+                #     llm = get_llm()
+                #     prompt = build_rag_prompt()
+                #     chain = prompt | llm
+
+                #     response = chain.invoke({
+                #         "context": context,
+                #         "question": question
+                #     })
+
                 with st.spinner("Génération de la réponse..."):
+                    try:
+                        llm = get_llm()
+                        prompt = build_rag_prompt()
+                        chain = prompt | llm
 
-                    llm = get_llm()
-                    prompt = build_rag_prompt()
-                    chain = prompt | llm
-
-                    response = chain.invoke({
-                        "context": context,
-                        "question": question
-                    })
+                        response = chain.invoke({
+                            "context": context,
+                            "question": question
+                        })
+                        answer = response.content
+                    except Exception as e:
+                        answer = (
+                            "⚠️ Impossible de contacter Ollama. "
+                            "Vérifie qu'il est bien lancé (`ollama serve`)."
+                        )
+                        st.error(f"Erreur technique : {e}")
 
                 answer = response.content
 
                 st.markdown(answer)
+
+                # Transparence : affichage des sources utilisées
+                with st.expander("📚 Sources utilisées"):
+                    for i, (doc, score) in enumerate(results):
+                        source = doc.metadata.get("source", "inconnu")
+                        page = doc.metadata.get("page", "?")
+
+                        st.markdown(f"**{i+1}. {source}** — page {page} · score {score:.3f}")
+                        st.caption(doc.page_content[:300] + ("..." if len(doc.page_content) > 300 else ""))
+                        st.divider()
 
                 st.session_state.messages.append(
                     {"role": "assistant", "content": answer}
                 )
                 st.session_state.all_chats[st.session_state.current_chat_id]["messages"] = st.session_state.messages
                 save_all_chats(st.session_state.all_chats)
-
-
-    # with st.chat_message("assistant"):
-
-    #     # Vérification qu'une base existe
-    #     if st.session_state.vector_store is None:
-
-    #         st.warning(
-    #             "Veuillez d'abord indexer un document."
-    #         )
-
-    #     else:
-    #         # Mode recherche sémantique
-    #         if not use_llm:
-
-    #             st.info("Mode recherche sémantique")
-
-    #             results = st.session_state.vector_store.similarity_search_with_score(
-    #                 question,
-    #                 k=3
-    #             )
-
-    #             for i, (doc, score) in enumerate(results):
-
-    #                 st.write(f"#### Résultat {i+1}")
-    #                 st.write(f"Score : {score}")
-    #                 st.write(f"Source : {doc.metadata.get('source')}")
-    #                 st.write(doc.page_content)
-    #                 st.divider()
-
-    #         # Mode RAG (LLM activé)
-    #         else:
-
-    #             st.info("Mode RAG")
-
-    #             with st.spinner("Recherche des passages pertinents..."):
-
-    #                 results = st.session_state.vector_store.similarity_search_with_score(
-    #                     question,
-    #                     k=3
-    #                 )
-
-    #                 context = format_context(results)
-
-    #             with st.spinner("Génération de la réponse..."):
-
-    #                 llm = get_llm()
-    #                 prompt = build_rag_prompt()
-
-    #                 # Le prompt est "rempli" puis envoyé au modèle
-    #                 chain = prompt | llm
-
-    #                 response = chain.invoke({
-    #                     "context": context,
-    #                     "question": question
-    #                 })
-
-    #             answer = response.content
-
-    #             st.markdown(answer)
-
-    #             # Sauvegarde dans l'historique du chat
-    #             st.session_state.messages.append(
-    #                 {
-    #                     "role": "assistant",
-    #                     "content": answer
-    #                 }
-    #             )
-            

@@ -1,7 +1,16 @@
 {
-  "a6a64715-628b-4424-9fdf-7e688785e9d2": {
-    "title": "Nouvelle discussion",
-    "created_at": "2026-07-17T23:49:07.212562",
-    "messages": []
+  "77febd8f-e881-4dfb-afd3-db68525f89b9": {
+    "title": "quel est la première question",
+    "created_at": "2026-07-18T00:23:21.215466",
+    "messages": [
+      {
+        "role": "user",
+        "content": "quel est la première question"
+      },
+      {
+        "role": "assistant",
+        "content": "La première question demandée dans le contexte est :\n\n\"Créez une nouvelle société portant votre nom en entier, ayant comme activité EXAMEN FINAL, adresse votre NIE, Activité : votre parcours ; paramétrez : mode de règlement ; un plan analytique : SERVICE avec 3 sections MKT(Marketing), CCL (Commercial), FIN(Financier).\""
+      }
+    ]
   }
 }

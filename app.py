@@ -11,6 +11,89 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+import json
+import uuid
+from datetime import datetime
+
+
+#===========================
+# Gestion de la persistance des chats
+#===========================
+CHATS_FILE = "chats.json"
+
+def load_all_chats():
+    """
+    Charge tous les chats sauvegardés depuis le disque.
+    Retourne un dictionnaire vide si le fichier n'existe pas encore.
+    """
+    if os.path.exists(CHATS_FILE):
+        with open(CHATS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_all_chats(chats):
+    """
+    Sauvegarde tous les chats sur le disque.
+    """
+    with open(CHATS_FILE, "w", encoding="utf-8") as f:
+        json.dump(chats, f, ensure_ascii=False, indent=2)
+
+def create_new_chat():
+    """
+    Crée un nouveau chat vide et le définit comme chat actif.
+    """
+    chat_id = str(uuid.uuid4())
+
+    st.session_state.all_chats[chat_id] = {
+        "title": "Nouvelle discussion",
+        "created_at": datetime.now().isoformat(),
+        "messages": []
+    }
+
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = []
+
+    save_all_chats(st.session_state.all_chats)
+
+def switch_chat(chat_id):
+    """
+    Bascule vers un chat existant et recharge ses messages.
+    """
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = st.session_state.all_chats[chat_id]["messages"]
+
+def delete_chat(chat_id):
+    """
+    Supprime un chat. Si c'était le chat actif, bascule vers
+    un autre chat existant, ou en crée un nouveau si c'était le dernier.
+    """
+    was_current = (chat_id == st.session_state.current_chat_id)
+
+    del st.session_state.all_chats[chat_id]
+    save_all_chats(st.session_state.all_chats)
+
+    if was_current:
+        if st.session_state.all_chats:
+            # Bascule vers le chat le plus récent restant
+            latest_id = max(
+                st.session_state.all_chats,
+                key=lambda cid: st.session_state.all_chats[cid]["created_at"]
+            )
+            switch_chat(latest_id)
+        else:
+            # Plus aucun chat : on en recrée un vide
+            create_new_chat()
+
+def update_current_chat_title(first_message):
+    """
+    Donne un titre au chat basé sur le premier message posé,
+    tant qu'il porte encore le titre par défaut.
+    """
+    chat = st.session_state.all_chats[st.session_state.current_chat_id]
+
+    if chat["title"] == "Nouvelle discussion":
+        # Tronque à 40 caractères pour un titre lisible dans la sidebar
+        chat["title"] = first_message[:40] + ("..." if len(first_message) > 40 else "")
 
 #===========================
 # Construction du prompt RAG
@@ -185,11 +268,27 @@ st.set_page_config(
     layout="wide"
 )
 
+
 # ==========================
 # Initialisation de la session
 # ==========================
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
+
+if "all_chats" not in st.session_state:
+    st.session_state.all_chats = load_all_chats()
+
+if "current_chat_id" not in st.session_state:
+    if st.session_state.all_chats:
+        # Reprend le chat le plus récent au lancement
+        latest_id = max(
+            st.session_state.all_chats,
+            key=lambda cid: st.session_state.all_chats[cid]["created_at"]
+        )
+        st.session_state.current_chat_id = latest_id
+        st.session_state.messages = st.session_state.all_chats[latest_id]["messages"]
+    else:
+        create_new_chat()
 
 # ==========================
 # Titre
@@ -203,6 +302,40 @@ st.caption("Votre assistant IA local")
 with st.sidebar:
 
     st.header("Configuration")
+
+    st.header("Discussions")
+
+    if st.button("➕ Nouveau chat", use_container_width=True):
+        create_new_chat()
+        st.rerun()
+
+    st.divider()
+
+    # Liste des chats existants, du plus récent au plus ancien
+    sorted_chats = sorted(
+        st.session_state.all_chats.items(),
+        key=lambda item: item[1]["created_at"],
+        reverse=True
+    )
+
+    for chat_id, chat_data in sorted_chats:
+        is_active = (chat_id == st.session_state.current_chat_id)
+
+        label = ("🟢 " if is_active else "") + chat_data["title"]
+
+        col1, col2 = st.columns([5, 1])
+
+        with col1:
+            if st.button(label, key=f"chat_{chat_id}", use_container_width=True):
+                switch_chat(chat_id)
+                st.rerun()
+
+        with col2:
+            if st.button("🗑️", key=f"delete_{chat_id}"):
+                delete_chat(chat_id)
+                st.rerun()
+
+    st.divider()
 
     uploaded_files = st.file_uploader(
         "Choisissez vos documents",
@@ -276,6 +409,13 @@ if question:
         }
     )
 
+    # Mise à jour du titre au premier message + sauvegarde
+    if len(st.session_state.messages) == 1:
+        update_current_chat_title(question)
+
+    st.session_state.all_chats[st.session_state.current_chat_id]["messages"] = st.session_state.messages
+    save_all_chats(st.session_state.all_chats)
+
     with st.chat_message("user"):
         st.markdown(question)
 
@@ -300,6 +440,8 @@ if question:
                 st.session_state.messages.append(
                     {"role": "assistant", "content": answer}
                 )
+                st.session_state.all_chats[st.session_state.current_chat_id]["messages"] = st.session_state.messages
+                save_all_chats(st.session_state.all_chats)
 
             else:
                 st.warning(
@@ -358,6 +500,8 @@ if question:
                 st.session_state.messages.append(
                     {"role": "assistant", "content": answer}
                 )
+                st.session_state.all_chats[st.session_state.current_chat_id]["messages"] = st.session_state.messages
+                save_all_chats(st.session_state.all_chats)
 
 
     # with st.chat_message("assistant"):

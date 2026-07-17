@@ -135,7 +135,7 @@ def create_vector_store(chunks):
     st.session_state.vector_store = vector_store
 
     return vector_store
-    
+
 #===========================
 # Fonction pour charger les documents
 #===========================
@@ -279,17 +279,37 @@ if question:
     with st.chat_message("user"):
         st.markdown(question)
 
-
     with st.chat_message("assistant"):
 
-        # Vérification qu'une base existe
+        # Cas 1 : aucun document indexé
         if st.session_state.vector_store is None:
 
-            st.warning(
-                "Veuillez d'abord indexer un document."
-            )
+            if use_llm:
+                # Chat libre : LLM sans RAG, sans contexte documentaire
+                st.info("Mode chat libre (sans document)")
 
+                with st.spinner("Génération de la réponse..."):
+
+                    llm = get_llm()
+                    response = llm.invoke(question)
+
+                answer = response.content
+
+                st.markdown(answer)
+
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": answer}
+                )
+
+            else:
+                st.warning(
+                    "Aucun document indexé. Activez le LLM pour discuter librement, "
+                    "ou indexez un document pour la recherche sémantique / le RAG."
+                )
+
+        # Cas 2 : des documents sont indexés
         else:
+
             # Mode recherche sémantique
             if not use_llm:
 
@@ -301,14 +321,13 @@ if question:
                 )
 
                 for i, (doc, score) in enumerate(results):
-
                     st.write(f"#### Résultat {i+1}")
                     st.write(f"Score : {score}")
                     st.write(f"Source : {doc.metadata.get('source')}")
                     st.write(doc.page_content)
                     st.divider()
 
-            # Mode RAG (LLM activé)
+            # Mode RAG (LLM + documents)
             else:
 
                 st.info("Mode RAG")
@@ -319,15 +338,12 @@ if question:
                         question,
                         k=3
                     )
-
                     context = format_context(results)
 
                 with st.spinner("Génération de la réponse..."):
 
                     llm = get_llm()
                     prompt = build_rag_prompt()
-
-                    # Le prompt est "rempli" puis envoyé au modèle
                     chain = prompt | llm
 
                     response = chain.invoke({
@@ -339,45 +355,75 @@ if question:
 
                 st.markdown(answer)
 
-                # Sauvegarde dans l'historique du chat
                 st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": answer
-                    }
+                    {"role": "assistant", "content": answer}
                 )
-            # Mode recherche sémantique
-            # if not use_llm:
 
-            #     st.info("Mode recherche sémantique")
 
-            #     # results = st.session_state.vector_store.similarity_search(
-            #     #     question,
-            #     #     k=3
-            #     # )
-                
-            #     results = st.session_state.vector_store.similarity_search_with_score(
-            #         question,
-            #         k=3
-            #     )
+    # with st.chat_message("assistant"):
 
-            #     # results = [
-            #     #     doc for doc, score in results
-            #     #     if score < 1.2
-            #     # ]
+    #     # Vérification qu'une base existe
+    #     if st.session_state.vector_store is None:
 
-            #     for i, (doc, score) in enumerate(results):
+    #         st.warning(
+    #             "Veuillez d'abord indexer un document."
+    #         )
 
-            #         st.write(f"#### Résultat {i+1}")
+    #     else:
+    #         # Mode recherche sémantique
+    #         if not use_llm:
 
-            #         st.write(
-            #             f"Score : {score}"
-            #         )
+    #             st.info("Mode recherche sémantique")
 
-            #         st.write(
-            #             f"Source : {doc.metadata.get('source')}"
-            #         )
+    #             results = st.session_state.vector_store.similarity_search_with_score(
+    #                 question,
+    #                 k=3
+    #             )
 
-            #         st.write(doc.page_content)
+    #             for i, (doc, score) in enumerate(results):
 
-            #         st.divider()
+    #                 st.write(f"#### Résultat {i+1}")
+    #                 st.write(f"Score : {score}")
+    #                 st.write(f"Source : {doc.metadata.get('source')}")
+    #                 st.write(doc.page_content)
+    #                 st.divider()
+
+    #         # Mode RAG (LLM activé)
+    #         else:
+
+    #             st.info("Mode RAG")
+
+    #             with st.spinner("Recherche des passages pertinents..."):
+
+    #                 results = st.session_state.vector_store.similarity_search_with_score(
+    #                     question,
+    #                     k=3
+    #                 )
+
+    #                 context = format_context(results)
+
+    #             with st.spinner("Génération de la réponse..."):
+
+    #                 llm = get_llm()
+    #                 prompt = build_rag_prompt()
+
+    #                 # Le prompt est "rempli" puis envoyé au modèle
+    #                 chain = prompt | llm
+
+    #                 response = chain.invoke({
+    #                     "context": context,
+    #                     "question": question
+    #                 })
+
+    #             answer = response.content
+
+    #             st.markdown(answer)
+
+    #             # Sauvegarde dans l'historique du chat
+    #             st.session_state.messages.append(
+    #                 {
+    #                     "role": "assistant",
+    #                     "content": answer
+    #                 }
+    #             )
+            

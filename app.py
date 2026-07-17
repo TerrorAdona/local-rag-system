@@ -109,19 +109,22 @@ def load_documents(uploaded_files):
 def create_vector_store(chunks):
     """
     Crée la base vectorielle ChromaDB à partir des chunks.
-    Repart d'une base propre à chaque indexation pour éviter les doublons.
+    Supprime l'ancienne collection via l'API Chroma (pas via le système de fichiers)
+    pour éviter les erreurs de verrouillage sous Windows.
     """
-    import shutil
-
-    persist_dir = "chroma_db"
-
-    # Supprime l'ancienne base si elle existe, pour éviter l'accumulation de doublons
-    if os.path.exists(persist_dir):
-        shutil.rmtree(persist_dir)
-
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
+
+    persist_dir = "chroma_db"
+
+    # Si une base existe déjà en session, on vide sa collection
+    # avant de recréer — évite les doublons sans toucher aux fichiers directement
+    if st.session_state.get("vector_store") is not None:
+        try:
+            st.session_state.vector_store.delete_collection()
+        except Exception:
+            pass  # la collection n'existait peut-être pas encore
 
     vector_store = Chroma.from_documents(
         documents=chunks,
@@ -132,7 +135,7 @@ def create_vector_store(chunks):
     st.session_state.vector_store = vector_store
 
     return vector_store
-
+    
 #===========================
 # Fonction pour charger les documents
 #===========================
